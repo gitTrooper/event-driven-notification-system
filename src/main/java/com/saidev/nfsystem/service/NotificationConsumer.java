@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
@@ -39,7 +40,7 @@ public class NotificationConsumer {
 
         UUID notificationId = UUID.fromString(message);
 
-        // 1️⃣ Atomic claim FIRST — prevents concurrent double-processing at DB level
+        //Atomic claim FIRST — prevents concurrent double-processing at DB level
         int updated = notificationRepository.markAsProcessing(notificationId);
 
         if (updated == 0) {
@@ -51,7 +52,7 @@ public class NotificationConsumer {
                 .findById(notificationId)
                 .orElseThrow();
 
-        // 2️⃣ Redis dedupe — scoped per attempt so retries are NOT blocked
+        //Redis dedupe — scoped per attempt so retries are NOT blocked
         String dedupeKey = "notif:" + notificationId + ":attempt:" + notification.getRetryCount();
 
         Boolean inserted = redisTemplate.opsForValue()
@@ -64,7 +65,7 @@ public class NotificationConsumer {
 
         try {
 
-            // 3️⃣ Redis rate limiting per user
+            //Redis rate limiting per user
             String rateKey = "user:" + notification.getUser().getId() + ":rate";
 
             Long count = redisTemplate.opsForValue().increment(rateKey, 1);
@@ -82,18 +83,14 @@ public class NotificationConsumer {
             // 4️⃣ Simulate sending notification
             System.out.println("Sending notification to user: " + notification.getUser().getId());
 
-            // 🔥 Simulated failure — remove this block in production and uncomment success block below
-            throw new RuntimeException("Forced failure");
-
-            /*
-            // ✅ Success case — uncomment in real use
+            //Success case
             notification.setStatus(NotificationStatus.SENT);
             notification.setSentAt(LocalDateTime.now());
             notificationRepository.save(notification);
 
             System.out.println("Notification sent successfully");
             metrics.incrementSuccess();
-            */
+
 
         } catch (Exception e) {
 
